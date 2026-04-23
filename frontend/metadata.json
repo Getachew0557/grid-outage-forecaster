@@ -1,0 +1,6 @@
+{
+  "name": "Grid Outage Forecaster",
+  "description": "Grid Outage Forecaster + Appliance Prioritizer for small businesses in Rwanda. Predictive analytics for energy resilience.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["AI_POWERED", "DATA_VISUALIZATION", "OFFLINE_READY"]
+}
