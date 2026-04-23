@@ -1,59 +1,106 @@
 import { create } from 'zustand';
-import { ForecastData, BusinessType } from '../types';
+import { ForecastData, ForecastResponse, MetricsData, BusinessType } from '../types';
+
+const API_BASE = '/api';
+const CACHE_KEY = 'gof_forecast_cache';
+const MAX_STALE_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 interface ForecastState {
   data: ForecastData | null;
+  metrics: MetricsData | null;
   isLoading: boolean;
+  isOfflineCache: boolean;
+  cacheAge: number | null; // minutes
+  error: string | null;
   fetchForecast: (business: BusinessType) => Promise<void>;
+  fetchMetrics: () => Promise<void>;
+  refreshModel: () => Promise<{ status: string; message: string }>;
 }
 
-const generateMockForecast = (business: BusinessType): ForecastData => {
-  const appliances = business === 'salon' 
-    ? ['Hair Dryer', 'Lights', 'TV', 'Clippers']
-    : business === 'cold_room'
-    ? ['Large Freezer', 'Small Freezer', 'Indoor Lights', 'Security Cam']
-    : ['Sewing Machine', 'Iron', 'Lights', 'Cutting Machine'];
+function cacheKey(business: BusinessType) {
+  return `${CACHE_KEY}_${business}`;
+}
 
-  const forecast = Array.from({ length: 24 }, (_, hour) => {
-    const p = Math.random();
-    // Higher risk in afternoon
-    const baseP = (hour >= 14 && hour <= 20) ? 0.3 + p * 0.4 : p * 0.2;
-    return {
-      hour,
-      p_outage: baseP,
-      duration_min: 30 + Math.random() * 90,
-      lower_bound: Math.max(0, baseP - 0.1),
-      upper_bound: Math.min(1, baseP + 0.15),
-    };
-  });
+function saveCache(business: BusinessType, data: ForecastData) {
+  try {
+    localStorage.setItem(cacheKey(business), JSON.stringify({ ts: Date.now(), data }));
+  } catch (_) {}
+}
 
-  const plan: Record<number, Record<string, 'ON' | 'OFF'>> = {};
-  forecast.forEach(f => {
-    plan[f.hour] = {};
-    appliances.forEach((app, idx) => {
-      // Critical is usually idx 1 (Lights)
-      if (idx === 1) plan[f.hour][app] = 'ON';
-      else plan[f.hour][app] = f.p_outage > 0.4 ? 'OFF' : 'ON';
-    });
-  });
+function loadCache(business: BusinessType): { data: ForecastData; ageMin: number } | null {
+  try {
+    const raw = localStorage.getItem(cacheKey(business));
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > MAX_STALE_MS) return null;
+    return { data, ageMin: Math.round((Date.now() - ts) / 60000) };
+  } catch (_) {
+    return null;
+  }
+}
 
+function mapResponse(res: ForecastResponse): ForecastData {
   return {
-    business,
-    generatedAt: new Date().toISOString(),
-    forecast,
-    plan,
-    revenue_saved: 12000 + Math.random() * 5000,
-    total_risk_hours: forecast.filter(f => f.p_outage > 0.3).length,
+    business: res.business,
+    generatedAt: res.generated_at,
+    forecast: res.forecast,
+    plan: res.plan,
+    revenue_saved: res.summary.revenue_saved,
+    total_risk_hours: res.summary.critical_hours_count,
+    summary: res.summary,
   };
-};
+}
 
 export const useForecastStore = create<ForecastState>((set) => ({
   data: null,
+  metrics: null,
   isLoading: false,
+  isOfflineCache: false,
+  cacheAge: null,
+  error: null,
+
   fetchForecast: async (business) => {
-    set({ isLoading: true });
-    // Simulate network delay
-    await new Promise(r => setTimeout(r, 800));
-    set({ data: generateMockForecast(business), isLoading: false });
+    set({ isLoading: true, error: null, isOfflineCache: false, cacheAge: null });
+    try {
+      const res = await fetch(`${API_BASE}/forecast/${business}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const json: ForecastResponse = await res.json();
+      const data = mapResponse(json);
+      saveCache(business, data);
+      set({ data, isLoading: false });
+    } catch (err) {
+      // fall back to localStorage cache
+      const cached = loadCache(business);
+      if (cached) {
+        set({
+          data: cached.data,
+          isLoading: false,
+          isOfflineCache: true,
+          cacheAge: cached.ageMin,
+          error: `Offline — showing ${cached.ageMin}-min-old cache`,
+        });
+      } else {
+        set({
+          isLoading: false,
+          error: 'Backend unreachable and no cache available. Start: uvicorn src.api:app --reload',
+        });
+      }
+    }
+  },
+
+  fetchMetrics: async () => {
+    try {
+      const res = await fetch(`${API_BASE}/metrics`, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) return;
+      const metrics: MetricsData = await res.json();
+      set({ metrics });
+    } catch (_) {}
+  },
+
+  refreshModel: async () => {
+    const res = await fetch(`${API_BASE}/forecast/refresh`, { method: 'POST' });
+    return res.json();
   },
 }));
