@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Grid Outage Forecaster</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;padding:16px}
+  h1{font-size:1.3rem;color:#38bdf8;margin-bottom:4px}
+  .sub{font-size:.8rem;color:#94a3b8;margin-bottom:16px}
+  .card{background:#1e293b;border-radius:10px;padding:14px;margin-bottom:14px}
+  .card h2{font-size:.9rem;color:#7dd3fc;margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em}
+  select,button{background:#334155;color:#e2e8f0;border:1px solid #475569;border-radius:6px;padding:6px 12px;font-size:.85rem;cursor:pointer}
+  button{background:#0284c7;border-color:#0284c7;margin-left:8px}
+  button:hover{background:#0369a1}
+  .row{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+  /* forecast chart */
+  #chart-wrap{overflow-x:auto}
+  #chart{display:flex;align-items:flex-end;gap:3px;height:120px;padding-top:8px}
+  .bar-col{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:22px}
+  .bar-outer{width:18px;background:#1e3a5f;border-radius:3px 3px 0 0;position:relative;cursor:pointer}
+  .bar-inner{width:100%;border-radius:3px 3px 0 0;transition:height .3s}
+  .bar-label{font-size:.6rem;color:#94a3b8}
+  .risk-low{background:#22c55e}
+  .risk-medium{background:#f59e0b}
+  .risk-high{background:#ef4444}
+  .risk-critical{background:#7c3aed}
+  /* plan table */
+  #plan-wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:.75rem}
+  th{background:#0f172a;color:#7dd3fc;padding:5px 8px;text-align:left;white-space:nowrap}
+  td{padding:4px 8px;border-bottom:1px solid #1e293b;white-space:nowrap}
+  .on{color:#4ade80;font-weight:600}
+  .off{color:#f87171}
+  /* summary pills */
+  .pills{display:flex;gap:8px;flex-wrap:wrap}
+  .pill{background:#0f172a;border-radius:20px;padding:4px 12px;font-size:.78rem}
+  .pill span{color:#38bdf8;font-weight:700}
+  /* risk badge */
+  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.7rem;font-weight:600}
+  .badge-low{background:#14532d;color:#4ade80}
+  .badge-medium{background:#451a03;color:#fbbf24}
+  .badge-high{background:#450a0a;color:#f87171}
+  .badge-critical{background:#2e1065;color:#c4b5fd}
+  /* offline banner */
+  #offline-banner{display:none;background:#7c2d12;color:#fed7aa;padding:8px 14px;border-radius:8px;font-size:.8rem;margin-bottom:12px}
+  /* tooltip */
+  .tooltip{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:#0f172a;border:1px solid #334155;border-radius:6px;padding:6px 8px;font-size:.7rem;white-space:nowrap;pointer-events:none;display:none;z-index:10}
+  .bar-outer:hover .tooltip{display:block}
+  #status{font-size:.75rem;color:#64748b;margin-top:4px}
+</style>
+</head>
+<body>
+
+<h1>⚡ Grid Outage Forecaster</h1>
+<p class="sub">24-hour probabilistic forecast + appliance plan · T2.3 AIMS KTT Hackathon</p>
+
+<div id="offline-banner">⚠ Offline mode — showing cached forecast. Max staleness: 6 hours. Treat high-risk hours with caution.</div>
+
+<div class="card">
+  <div class="row">
+    <label for="biz-select" style="font-size:.85rem">Business:</label>
+    <select id="biz-select">
+      <option value="salon">💇 Salon</option>
+      <option value="cold_room">🧊 Cold Room</option>
+      <option value="tailor">🧵 Tailor</option>
+    </select>
+    <button onclick="loadForecast()">Refresh</button>
+  </div>
+  <div id="status">Loading…</div>
+</div>
+
+<div class="card" id="summary-card" style="display:none">
+  <h2>Summary</h2>
+  <div class="pills" id="summary-pills"></div>
+</div>
+
+<div class="card">
+  <h2>Outage Probability — Next 24 Hours</h2>
+  <div id="chart-wrap"><div id="chart"></div></div>
+  <div style="display:flex;gap:16px;margin-top:8px;font-size:.7rem">
+    <span><span style="color:#22c55e">■</span> Low &lt;20%</span>
+    <span><span style="color:#f59e0b">■</span> Medium 20-45%</span>
+    <span><span style="color:#ef4444">■</span> High 45-65%</span>
+    <span><span style="color:#7c3aed">■</span> Critical &gt;65%</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Appliance Plan</h2>
+  <div id="plan-wrap"><p style="color:#64748b;font-size:.8rem">Loading plan…</p></div>
+</div>
+
+<script>
+const API = 'http://localhost:8000';
+const CACHE_KEY = 'gof_cache';
+const MAX_STALE_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+function riskLevel(p) {
+  if (p < 0.20) return 'low';
+  if (p < 0.45) return 'medium';
+  if (p < 0.65) return 'high';
+  return 'critical';
+}
+
+function riskColor(level) {
+  return {low:'#22c55e',medium:'#f59e0b',high:'#ef4444',critical:'#7c3aed'}[level];
+}
+
+function badgeHtml(level) {
+  return `<span class="badge badge-${level}">${level.toUpperCase()}</span>`;
+}
+
+function renderChart(forecast) {
+  const chart = document.getElementById('chart');
+  chart.innerHTML = '';
+  const maxP = Math.max(...forecast.map(f => f.upper_bound), 0.01);
+  forecast.forEach(f => {
+    const level = riskLevel(f.p_outage);
+    const col = document.createElement('div');
+    col.className = 'bar-col';
+    const pct = Math.round(f.p_outage * 100);
+    const height = Math.max(4, Math.round((f.p_outage / maxP) * 110));
+    col.innerHTML = `
+      <div class="bar-outer" style="height:${height}px">
+        <div class="bar-inner risk-${level}" style="height:100%"></div>
+        <div class="tooltip">
+          Hour ${f.hour}:00<br>
+          P(outage): ${pct}%<br>
+          Duration: ~${Math.round(f.duration_min)}min<br>
+          Band: [${Math.round(f.lower_bound*100)}%–${Math.round(f.upper_bound*100)}%]
+        </div>
+      </div>
+      <div class="bar-label">${f.hour}</div>`;
+    chart.appendChild(col);
+  });
+}
+
+function renderPlan(plan, forecast) {
+  const wrap = document.getElementById('plan-wrap');
+  if (!plan || Object.keys(plan).length === 0) {
+    wrap.innerHTML = '<p style="color:#64748b;font-size:.8rem">No plan data.</p>';
+    return;
+  }
+  const hours = Object.keys(plan).sort((a,b) => +a - +b);
+  const appliances = Object.keys(plan[hours[0]] || {});
+  if (!appliances.length) { wrap.innerHTML = '<p style="color:#64748b">No appliances.</p>'; return; }
+
+  let html = '<table><thead><tr><th>Hour</th><th>Risk</th>';
+  appliances.forEach(a => html += `<th>${a}</th>`);
+  html += '</tr></thead><tbody>';
+
+  hours.forEach(h => {
+    const fc = forecast.find(f => f.hour === +h) || {};
+    const level = riskLevel(fc.p_outage || 0);
+    html += `<tr><td>${h}:00</td><td>${badgeHtml(level)}</td>`;
+    appliances.forEach(a => {
+      const state = plan[h][a] || 'OFF';
+      html += `<td class="${state.toLowerCase()}">${state}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function renderSummary(summary) {
+  const card = document.getElementById('summary-card');
+  const pills = document.getElementById('summary-pills');
+  card.style.display = 'block';
+  pills.innerHTML = `
+    <div class="pill">Max risk: <span>${Math.round(summary.max_risk*100)}%</span> @ hour <span>${summary.max_risk_hour}</span></div>
+    <div class="pill">Expected downtime: <span>${Math.round(summary.total_expected_downtime)} min</span></div>
+    <div class="pill">Revenue protected: <span>${summary.revenue_saved.toLocaleString()} RWF</span></div>
+    <div class="pill">Critical hours: <span>${summary.critical_hours_count}</span></div>
+  `;
+}
+
+function saveCache(biz, data) {
+  try {
+    localStorage.setItem(CACHE_KEY + '_' + biz, JSON.stringify({ts: Date.now(), data}));
+  } catch(e) {}
+}
+
+function loadCache(biz) {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY + '_' + biz);
+    if (!raw) return null;
+    const {ts, data} = JSON.parse(raw);
+    if (Date.now() - ts > MAX_STALE_MS) return null;
+    return {data, stale: true, age: Math.round((Date.now()-ts)/60000)};
+  } catch(e) { return null; }
+}
+
+async function loadForecast() {
+  const biz = document.getElementById('biz-select').value;
+  const status = document.getElementById('status');
+  const banner = document.getElementById('offline-banner');
+  status.textContent = 'Fetching forecast…';
+  banner.style.display = 'none';
+
+  try {
+    const t0 = performance.now();
+    const resp = await fetch(`${API}/api/forecast/${biz}`, {signal: AbortSignal.timeout(5000)});
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    const ms = Math.round(performance.now() - t0);
+    status.textContent = `Updated ${new Date().toLocaleTimeString()} · ${ms}ms · live`;
+    saveCache(biz, data);
+    renderChart(data.forecast);
+    renderPlan(data.plan, data.forecast);
+    renderSummary(data.summary);
+  } catch(err) {
+    const cached = loadCache(biz);
+    if (cached) {
+      banner.textContent = `⚠ Offline — cached forecast (${cached.age} min ago). Max staleness: 6h. High-risk hours may be inaccurate.`;
+      banner.style.display = 'block';
+      status.textContent = `Offline — showing ${cached.age}-min-old cache`;
+      renderChart(cached.data.forecast);
+      renderPlan(cached.data.plan, cached.data.forecast);
+      renderSummary(cached.data.summary);
+    } else {
+      status.textContent = `Error: ${err.message}. Start backend: uvicorn src.api:app --reload`;
+      document.getElementById('chart').innerHTML = '<p style="color:#f87171;font-size:.8rem;padding:8px">Could not load forecast. Is the backend running?</p>';
+    }
+  }
+}
+
+// auto-load on page open
+window.addEventListener('load', loadForecast);
+document.getElementById('biz-select').addEventListener('change', loadForecast);
+</script>
+</body>
+</html>
