@@ -17,6 +17,9 @@ GET  /api/appliances            – List all appliances
 from __future__ import annotations
 
 import os
+# Fix xgboost 2.x Windows DLL hang
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "4")
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path

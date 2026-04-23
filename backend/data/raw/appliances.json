@@ -1,0 +1,72 @@
+[
+  {
+    "name": "Fridge",
+    "category": "critical",
+    "watts_avg": 150,
+    "start_up_spike_w": 600,
+    "revenue_rwf_per_h": 5000
+  },
+  {
+    "name": "Freezer",
+    "category": "critical",
+    "watts_avg": 200,
+    "start_up_spike_w": 800,
+    "revenue_rwf_per_h": 8000
+  },
+  {
+    "name": "Lighting",
+    "category": "critical",
+    "watts_avg": 50,
+    "start_up_spike_w": 50,
+    "revenue_rwf_per_h": 500
+  },
+  {
+    "name": "Sewing Machine",
+    "category": "critical",
+    "watts_avg": 100,
+    "start_up_spike_w": 300,
+    "revenue_rwf_per_h": 3000
+  },
+  {
+    "name": "Hair Dryer",
+    "category": "comfort",
+    "watts_avg": 1200,
+    "start_up_spike_w": 1200,
+    "revenue_rwf_per_h": 8000
+  },
+  {
+    "name": "Fan",
+    "category": "comfort",
+    "watts_avg": 50,
+    "start_up_spike_w": 50,
+    "revenue_rwf_per_h": 1000
+  },
+  {
+    "name": "Water Heater",
+    "category": "comfort",
+    "watts_avg": 1500,
+    "start_up_spike_w": 1500,
+    "revenue_rwf_per_h": 2000
+  },
+  {
+    "name": "TV",
+    "category": "luxury",
+    "watts_avg": 100,
+    "start_up_spike_w": 100,
+    "revenue_rwf_per_h": 2000
+  },
+  {
+    "name": "Radio",
+    "category": "luxury",
+    "watts_avg": 20,
+    "start_up_spike_w": 20,
+    "revenue_rwf_per_h": 500
+  },
+  {
+    "name": "Air Conditioner",
+    "category": "luxury",
+    "watts_avg": 1000,
+    "start_up_spike_w": 1500,
+    "revenue_rwf_per_h": 1000
+  }
+]

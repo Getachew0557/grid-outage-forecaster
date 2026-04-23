@@ -15,6 +15,10 @@ Metrics computed on a 30-day held-out window
 from __future__ import annotations
 
 import json
+import os
+# Fix xgboost 2.x Windows DLL hang
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "4")
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -35,7 +39,7 @@ from src.forecaster import OutageForecaster, create_features, FEATURE_COLS
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_PATH = BASE_DIR / "models" / "outage_model.pkl"
 CSV_PATH = BASE_DIR / "data" / "raw" / "grid_history.csv"
-THRESHOLD = 0.30
+THRESHOLD = 0.08  # use base-rate-aware threshold (~1.5× outage rate)
 HOLDOUT_DAYS = 30
 
 

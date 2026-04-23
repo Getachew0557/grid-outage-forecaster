@@ -1,0 +1,31 @@
+{
+  "salon": {
+    "appliances": [
+      "Hair Dryer",
+      "Lighting",
+      "TV",
+      "Radio",
+      "Water Heater"
+    ],
+    "description": "Hair salon with multiple dryers"
+  },
+  "cold_room": {
+    "appliances": [
+      "Fridge",
+      "Freezer",
+      "Lighting",
+      "Air Conditioner"
+    ],
+    "description": "Food storage cold room"
+  },
+  "tailor": {
+    "appliances": [
+      "Sewing Machine",
+      "Lighting",
+      "Iron",
+      "Fan",
+      "Radio"
+    ],
+    "description": "Tailoring shop with sewing machines"
+  }
+}

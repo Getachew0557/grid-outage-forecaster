@@ -1,6 +1,6 @@
 # process_log.md — Hour-by-Hour Timeline & LLM Tool Declaration
 **Challenge:** T2.3 · Grid Outage Forecaster + Appliance Prioritizer  
-**Candidate:** [Your Name]  
+**Candidate:** Getachew Getu Enyew  
 **Date:** 2025-04-23
 
 ---

@@ -1,6 +1,6 @@
 # Honor Code — Signed Declaration
 
-**Full Name:** [Your Full Name]  
+**Full Name:** Getachew Getu Enyew  
 **Date:** 2025-04-23  
 **Challenge:** T2.3 · Grid Outage Forecaster + Appliance Prioritizer · AIMS KTT Hackathon
 
@@ -12,5 +12,5 @@
 
 ---
 
-**Signature:** [Your Full Name]  
+**Signature:** Getachew Getu Enyew  
 **Date:** 2025-04-23

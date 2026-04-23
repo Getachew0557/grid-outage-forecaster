@@ -11,6 +11,10 @@ Models
 from __future__ import annotations
 
 import math
+import os
+# Fix xgboost 2.x Windows DLL hang by limiting OpenMP threads before import
+os.environ.setdefault("OMP_NUM_THREADS", "4")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "4")
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -169,14 +173,16 @@ class OutageForecaster:
         # ── classifier ────────────────────────────────────────────────────────
         logger.info(f"Training classifier on {len(train):,} rows …")
         self.clf = XGBClassifier(
-            n_estimators=400,
-            max_depth=5,
-            learning_rate=0.05,
+            n_estimators=500,
+            max_depth=6,
+            learning_rate=0.03,
             subsample=0.8,
-            colsample_bytree=0.8,
+            colsample_bytree=0.7,
+            min_child_weight=3,
+            gamma=0.1,
             objective="binary:logistic",
             eval_metric="logloss",
-            early_stopping_rounds=30,
+            early_stopping_rounds=40,
             random_state=42,
             n_jobs=-1,
             verbosity=0,
@@ -187,7 +193,7 @@ class OutageForecaster:
             verbose=False,
         )
 
-        # ── regressor (train only on outage hours) ────────────────────────────
+        # ── regressor (train only on outage hours for better duration estimates) ──
         logger.info("Training duration regressor …")
         outage_mask_train = y_cls_train == 1
         outage_mask_val = y_cls_val == 1
@@ -205,16 +211,12 @@ class OutageForecaster:
             n_jobs=-1,
             verbosity=0,
         )
-        if outage_mask_train.sum() > 10:
-            self.reg.fit(
-                X_train[outage_mask_train], y_reg_train[outage_mask_train],
-                eval_set=[(X_val[outage_mask_val], y_reg_val[outage_mask_val])]
-                if outage_mask_val.sum() > 0 else None,
-                verbose=False,
-            )
-        else:
-            # fallback: train on all rows
-            self.reg.fit(X_train, y_reg_train, verbose=False)
+        # train on all rows so it can predict 0 for non-outage hours
+        self.reg.fit(
+            X_train, y_reg_train,
+            eval_set=[(X_val, y_reg_val)],
+            verbose=False,
+        )
 
         # ── validation metrics ────────────────────────────────────────────────
         p_val = self.clf.predict_proba(X_val)[:, 1]
